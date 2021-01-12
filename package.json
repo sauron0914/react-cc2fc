@@ -1,0 +1,38 @@
+{
+  "name": "@dian/find-useless-file",
+  "version": "1.0.1",
+  "description": "",
+  "main": "rollup.config.js",
+  "bin": {
+    "react-cc2fc": "./bin/init.js"
+  },
+  "scripts": {
+    "dev": "rollup -c -w",
+    "build": "rollup -c"
+  },
+  "keywords": [
+    "component",
+    "statistics"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sauron0914/find-useless-file.git"
+  },
+  "author": "sauron0914(s_sauron@163.com)",
+  "license": "ISC",
+  "dependencies": {
+    "@babel/generator": "^7.12.11",
+    "@babel/parser": "^7.12.11",
+    "@types/node": "^13.9.1",
+    "chalk": "^3.0.0",
+    "commander": "^5.0.0",
+    "inquirer": "^7.1.0",
+    "recast": "^0.20.4",
+    "typescript": "^3.8.3"
+  },
+  "devDependencies": {
+    "rollup": "^2.0.6",
+    "rollup-plugin-commonjs": "^10.1.0",
+    "rollup-plugin-typescript": "^1.0.1"
+  }
+}
