@@ -5,7 +5,9 @@ export enum Types {
   ThisExpression = 'ThisExpression',
   VariableDeclaration = 'VariableDeclaration',
   ExpressionStatement = 'ExpressionStatement',
-  ImportDeclaration = 'ImportDeclaration'
+  ImportDeclaration = 'ImportDeclaration',
+  ExportDefaultDeclaration = 'ExportDefaultDeclaration',
+  ExportNamedDeclaration = 'ExportNamedDeclaration'
 }
 
 export enum ComponentLifecycleTypes {

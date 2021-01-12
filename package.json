@@ -1,6 +1,6 @@
 {
-  "name": "@dian/find-useless-file",
-  "version": "1.0.1",
+  "name": "react-cc2fc",
+  "version": "1.0.0",
   "description": "",
   "main": "rollup.config.js",
   "bin": {
@@ -16,7 +16,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sauron0914/find-useless-file.git"
+    "url": "git+https://github.com/sauron0914/react-cc2fc.git"
   },
   "author": "sauron0914(s_sauron@163.com)",
   "license": "ISC",

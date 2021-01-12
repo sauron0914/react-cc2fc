@@ -14,7 +14,7 @@ program.usage('<command>')
 program
     .command('start')
     .description('class components to hooks funtion components')
-    .action(commands.reactClassComponentToFunctionComponent)
+    .action(commands.cc2fc)
 
 program.parse(process.argv)
 

@@ -1,5 +1,8 @@
 import fs from 'fs'
 import recast from 'recast'
+import { exec } from 'child_process'
+import { prompt } from 'inquirer'
+import chalk from 'chalk'
 
 const {
     expressionStatement,
@@ -13,6 +16,7 @@ const {
     variableDeclarator,
     arrayPattern,
     importSpecifier,
+    exportDefaultDeclaration,
 } = recast.types.builders
 
 const includeFile = ['.js']
@@ -35,7 +39,21 @@ export const traverseFile= (src ,callback) => {
     })
 }
 
+/**
+ * 获取node命令参数
+ * 
+ * 输入 dian-codemod reverse-less file-path1 files-path2
+ * 
+ *  getArgvs() 返回 [file-path1, files-path2]
+*/
+export const getArgvs = () => [...process.argv].splice(3)
 
+/**
+ * 创建一个类似 useEffect(()=>{
+ *   ...something
+ * },[])
+ * 暂不支持第二个参数自动生成
+*/
 export const useEffectExpressionStatement = ({
     props = [],
     content = [],
@@ -61,6 +79,9 @@ export const useEffectExpressionStatement = ({
     )
 }
 
+/**
+ * 创建一个类似 const [name, setName] = useState() 表达式
+*/
 export const useStateExpressionStatement = ({
     stateName, 
     setStateName,
@@ -74,6 +95,9 @@ export const useStateExpressionStatement = ({
     ])
 }
 
+/**
+ * 创建一个 react 函数表达式 
+*/
 export const reactFunctionComponentDeclaration = (FCName, {
     props = [],
     content = []
@@ -83,12 +107,21 @@ export const reactFunctionComponentDeclaration = (FCName, {
     ])
 }
 
+/**
+ * name => setName
+*/
 export const setStateAction = (str: string)=> {
     return 'set' + str[0].toLocaleUpperCase() + str.substr(1)
 }
 
+/**
+ * get originalCode
+*/
 export const originalCode = parseAst => recast.print(parseAst).code
 
+/**
+ * 生成 setState 表达式
+*/
 export const transformSetState = (stateStrParse) => {
     return stateStrParse.map(item=>{
         return callExpression(
@@ -98,6 +131,9 @@ export const transformSetState = (stateStrParse) => {
     }) 
 }
 
+/**
+ * 处理this this.state 和 this.setState
+*/
 export const transformState = (body) => {
     let str = originalCode(body)
     const res = transformSetStateToHooks(str)
@@ -108,6 +144,14 @@ export const transformState = (body) => {
     return recast.parse(str).program.body[0].body
 }
 
+/**
+ * this.setState => setState
+ * this.setState({
+ *   name: 'xiaoming',
+ *   age: 21
+ * }) => setName('xiaoming') \n setAge(21)
+ * 
+*/
 export const transformSetStateToHooks = (str) => {
     const thisSetStateMatch = str.split('this.setState(').slice(1)
 
@@ -123,16 +167,27 @@ export const transformSetStateToHooks = (str) => {
     }, [])
 }
 
+/**
+ * 对 render 处理
+ * 若是render里面只包含return，则直接返回
+ * 否则生成一个立即执行函数，把render里面return前的操作置前
+*/
 export const JSXReturnExpressionStatement = (val) => {
-    if(val.length === 1) return val[0]
-
-    return returnStatement(callExpression(arrowFunctionExpression([], blockStatement([...val])), []))
+    if(val.length === 1) return [val[0]]
+    // return [returnStatement(callExpression(arrowFunctionExpression([], blockStatement([...val])), []))]
+    return [...val]
 }
 
+/**
+ * 生成一个导入说明符
+*/
 export const createImportSpecifier = (name) => {
     return importSpecifier(identifier(name))
 }
 
+/**
+ * 匹配出一个字符串对象
+*/
 const findObjectStr = (str: string) => {
     const res = { str: '', count: 0 }
     str.split('').some(item=> {
@@ -145,4 +200,51 @@ const findObjectStr = (str: string) => {
         }
     })
     return res.str
+}
+
+/**
+ * prompt 提示 是否继续操作
+*/
+export const continueExec = ()=> {
+    const promptList = [
+        {
+            type: 'choices',
+            name: 'isContinue',
+            message: '是否继续操作: (Y/N)?',
+            default: 'N'
+        },
+    ]
+    return new Promise((resolve, reject)=> {
+        prompt(promptList).then(res=> {
+            res.isContinue === 'Y' && resolve(true)
+        }).catch(()=> {
+            reject()
+        })
+    })
+}
+
+/**
+ * 检测当前分支status，若是有被修改的文件，则提示
+*/
+export const isChangesNotStagedForCommit= () => {
+    const CHANGES_NOT_STAGED_FOR_COMMIT = 'Changes not staged for commit'
+   
+    return new Promise(resolve=> {
+        exec('git status', (err, stdout, stderr) => {
+            if (err) {
+                console.log(chalk.red('当前目录并未检测到git信息, 执行命令可能会对文件造成无法恢复的情况'))
+                continueExec().then(()=> {
+                    resolve(true)
+                })
+            } else {
+                if(stdout.includes(CHANGES_NOT_STAGED_FOR_COMMIT)) {
+                   console.log(chalk.red('你有变更的文件未提交，为了确保你的分支不被破坏，请处理后再次执行此命令'))
+                   console.log(chalk.red('若是你确保分支安全情况下，你仍可以继续操作'))
+                   continueExec().then(()=> {
+                        resolve(true)
+                    })
+                } else resolve(true)
+            }
+        })
+    })
 }
