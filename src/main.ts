@@ -1,5 +1,6 @@
 import recast from 'recast'
 import fs from 'fs'
+import path from 'path'
 import chalk from 'chalk'
 import { 
   originalCode,
@@ -17,6 +18,7 @@ import {
 const {
   exportDefaultDeclaration,
   exportNamedDeclaration,
+  identifier,
 } = recast.types.builders
 import { ComponentLifecycleTypes, Types } from './types'
 
@@ -36,6 +38,12 @@ const NotSupportComponentLifecycle = [
   ComponentLifecycleTypes.getDefaultProps,
   ComponentLifecycleTypes.getInitialState
 ]
+
+const getNewFileName = filePath => {
+  const arr = filePath.split('/')
+  const [name, ...suffix] = arr[arr.length -1].split('.')
+  return name + '.fc.' + suffix.join('.')
+}
 
 const dealConstructor = (constructorBody, acc) => {
   constructorBody.forEach(constructorItem => {
@@ -61,7 +69,6 @@ const dealConstructor = (constructorBody, acc) => {
 const dealComponentBody = (item, specifierInfo) => {
     // 不支持的生命周期，暂且不管
     if(item.body.body.some(i => NotSupportComponentLifecycle.includes(i.key.name))) {
-      console.log('不支持的生命周期')
       return item
     } else {
       const reactFCBody = item.body.body.reduce((acc, i)=> {
@@ -119,8 +126,8 @@ const isReactComponent = item => item.type === Types.ClassDeclaration && item.su
 const isExportDefaultDeclaration = item => item.type === Types.ExportDefaultDeclaration && isReactComponent(item.declaration)
 const isExportNamedDeclaration = item => item.type === Types.ExportNamedDeclaration && isReactComponent(item.declaration)
 
-const reactClassComponentToFunctionComponent  = path => {
-  const code =  fs.readFileSync(path, {encoding:'utf8'}).toString()
+const reactClassComponentToFunctionComponent  = filePath => {
+  const code =  fs.readFileSync(filePath, {encoding:'utf8'}).toString()
   const initializer = recast.parse(code)
   const specifierInfo = {
     useState: false,
@@ -130,7 +137,7 @@ const reactClassComponentToFunctionComponent  = path => {
   const res = initializer.program.body.reduce((accumulate, item) => {
     // export default class Demo extends Component
     if(isExportDefaultDeclaration(item)) {
-        accumulate.push(exportDefaultDeclaration(dealComponentBody(item.declaration, specifierInfo)))
+        accumulate.push(dealComponentBody(item.declaration, specifierInfo), exportDefaultDeclaration(identifier(item.declaration.id.name)))
     } else if(isExportNamedDeclaration(item)) {
        // export class Demo extends Component
         accumulate.push(exportNamedDeclaration(dealComponentBody(item.declaration, specifierInfo)))
@@ -138,7 +145,6 @@ const reactClassComponentToFunctionComponent  = path => {
       // class Demo extends Component
       accumulate.push(dealComponentBody(item, specifierInfo))
     } else {
-      console.log('不是React Class 组件')
       accumulate.push(item)
     }
     return accumulate
@@ -160,7 +166,11 @@ const reactClassComponentToFunctionComponent  = path => {
   })
 
   initializer.program.body = res
-  console.log(recast.print(initializer).code)
+
+  fs.writeFile(path.resolve(filePath, '..', getNewFileName(filePath)), recast.print(initializer).code, {} ,function(err){
+    if(err) console.log(err)
+    console.log(`!!!注意：默认会在目标文件同级生成一个${getNewFileName(filePath)}文件`)
+  })
 }
 
 const cc2fc = () => {

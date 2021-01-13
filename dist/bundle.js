@@ -4,6 +4,7 @@ Object.defineProperty(exports, '__esModule', { value: true });
 
 var recast = require('recast');
 var fs = require('fs');
+var path = require('path');
 var chalk = require('chalk');
 var child_process = require('child_process');
 var inquirer = require('inquirer');
@@ -12,6 +13,7 @@ function _interopDefaultLegacy (e) { return e && typeof e === 'object' && 'defau
 
 var recast__default = /*#__PURE__*/_interopDefaultLegacy(recast);
 var fs__default = /*#__PURE__*/_interopDefaultLegacy(fs);
+var path__default = /*#__PURE__*/_interopDefaultLegacy(path);
 var chalk__default = /*#__PURE__*/_interopDefaultLegacy(chalk);
 
 /*! *****************************************************************************
@@ -273,7 +275,7 @@ var ComponentLifecycleTypes;
     ComponentLifecycleTypes["getDefaultProps"] = "getDefaultProps";
 })(ComponentLifecycleTypes || (ComponentLifecycleTypes = {}));
 
-var _a$1 = recast__default['default'].types.builders, exportDefaultDeclaration$1 = _a$1.exportDefaultDeclaration, exportNamedDeclaration = _a$1.exportNamedDeclaration;
+var _a$1 = recast__default['default'].types.builders, exportDefaultDeclaration$1 = _a$1.exportDefaultDeclaration, exportNamedDeclaration = _a$1.exportNamedDeclaration, identifier$1 = _a$1.identifier;
 var cwd = process.cwd() + '/';
 var NotSupportComponentLifecycle = [
     ComponentLifecycleTypes.componentWillReceiveProps,
@@ -289,6 +291,11 @@ var NotSupportComponentLifecycle = [
     ComponentLifecycleTypes.getDefaultProps,
     ComponentLifecycleTypes.getInitialState
 ];
+var getNewFileName = function (filePath) {
+    var arr = filePath.split('/');
+    var _a = arr[arr.length - 1].split('.'), name = _a[0], suffix = _a.slice(1);
+    return name + '.fc.' + suffix.join('.');
+};
 var dealConstructor = function (constructorBody, acc) {
     constructorBody.forEach(function (constructorItem) {
         // 找到 this.state 
@@ -312,7 +319,6 @@ var dealConstructor = function (constructorBody, acc) {
 var dealComponentBody = function (item, specifierInfo) {
     // 不支持的生命周期，暂且不管
     if (item.body.body.some(function (i) { return NotSupportComponentLifecycle.includes(i.key.name); })) {
-        console.log('不支持的生命周期');
         return item;
     }
     else {
@@ -369,8 +375,8 @@ var dealComponentBody = function (item, specifierInfo) {
 var isReactComponent = function (item) { return item.type === Types.ClassDeclaration && item.superClass.name === Types.Component; };
 var isExportDefaultDeclaration = function (item) { return item.type === Types.ExportDefaultDeclaration && isReactComponent(item.declaration); };
 var isExportNamedDeclaration = function (item) { return item.type === Types.ExportNamedDeclaration && isReactComponent(item.declaration); };
-var reactClassComponentToFunctionComponent = function (path) {
-    var code = fs__default['default'].readFileSync(path, { encoding: 'utf8' }).toString();
+var reactClassComponentToFunctionComponent = function (filePath) {
+    var code = fs__default['default'].readFileSync(filePath, { encoding: 'utf8' }).toString();
     var initializer = recast__default['default'].parse(code);
     var specifierInfo = {
         useState: false,
@@ -380,7 +386,7 @@ var reactClassComponentToFunctionComponent = function (path) {
     var res = initializer.program.body.reduce(function (accumulate, item) {
         // export default class Demo extends Component
         if (isExportDefaultDeclaration(item)) {
-            accumulate.push(exportDefaultDeclaration$1(dealComponentBody(item.declaration, specifierInfo)));
+            accumulate.push(dealComponentBody(item.declaration, specifierInfo), exportDefaultDeclaration$1(identifier$1(item.declaration.id.name)));
         }
         else if (isExportNamedDeclaration(item)) {
             // export class Demo extends Component
@@ -391,7 +397,6 @@ var reactClassComponentToFunctionComponent = function (path) {
             accumulate.push(dealComponentBody(item, specifierInfo));
         }
         else {
-            console.log('不是React Class 组件');
             accumulate.push(item);
         }
         return accumulate;
@@ -412,7 +417,11 @@ var reactClassComponentToFunctionComponent = function (path) {
         }
     });
     initializer.program.body = res;
-    console.log(recast__default['default'].print(initializer).code);
+    fs__default['default'].writeFile(path__default['default'].resolve(filePath, '..', getNewFileName(filePath)), recast__default['default'].print(initializer).code, {}, function (err) {
+        if (err)
+            console.log(err);
+        console.log("!!!\u6CE8\u610F\uFF1A\u9ED8\u8BA4\u4F1A\u5728\u76EE\u6807\u6587\u4EF6\u540C\u7EA7\u751F\u6210\u4E00\u4E2A" + getNewFileName(filePath) + "\u6587\u4EF6");
+    });
 };
 var cc2fc = function () {
     isChangesNotStagedForCommit().then(function () {
