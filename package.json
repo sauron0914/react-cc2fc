@@ -1,7 +1,7 @@
 {
   "name": "react-cc2fc",
   "version": "1.0.0",
-  "description": "",
+  "description": "React Class Component To Hooks Function Component",
   "main": "rollup.config.js",
   "bin": {
     "react-cc2fc": "./bin/init.js"
