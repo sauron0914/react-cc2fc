@@ -16,7 +16,6 @@ const {
     variableDeclarator,
     arrayPattern,
     importSpecifier,
-    exportDefaultDeclaration,
 } = recast.types.builders
 
 const includeFile = ['.js']
@@ -173,6 +172,7 @@ export const transformSetStateToHooks = (str) => {
  * 否则生成一个立即执行函数，把render里面return前的操作置前
 */
 export const JSXReturnExpressionStatement = (val) => {
+
     if(val.length === 1) return [val[0]]
     // return [returnStatement(callExpression(arrowFunctionExpression([], blockStatement([...val])), []))]
     return [...val]

@@ -39,7 +39,7 @@ function __spreadArrays() {
     return r;
 }
 
-var _a = recast__default['default'].types.builders, expressionStatement = _a.expressionStatement, callExpression = _a.callExpression, identifier = _a.identifier, arrowFunctionExpression = _a.arrowFunctionExpression, blockStatement = _a.blockStatement, returnStatement = _a.returnStatement, arrayExpression = _a.arrayExpression, variableDeclaration = _a.variableDeclaration, variableDeclarator = _a.variableDeclarator, arrayPattern = _a.arrayPattern, importSpecifier = _a.importSpecifier, exportDefaultDeclaration = _a.exportDefaultDeclaration;
+var _a = recast__default['default'].types.builders, expressionStatement = _a.expressionStatement, callExpression = _a.callExpression, identifier = _a.identifier, arrowFunctionExpression = _a.arrowFunctionExpression, blockStatement = _a.blockStatement, returnStatement = _a.returnStatement, arrayExpression = _a.arrayExpression, variableDeclaration = _a.variableDeclaration, variableDeclarator = _a.variableDeclarator, arrayPattern = _a.arrayPattern, importSpecifier = _a.importSpecifier;
 var includeFile = ['.js'];
 var matchSuffix = function (str) {
     var res = str.match(/\.\w+/g);
@@ -275,7 +275,7 @@ var ComponentLifecycleTypes;
     ComponentLifecycleTypes["getDefaultProps"] = "getDefaultProps";
 })(ComponentLifecycleTypes || (ComponentLifecycleTypes = {}));
 
-var _a$1 = recast__default['default'].types.builders, exportDefaultDeclaration$1 = _a$1.exportDefaultDeclaration, exportNamedDeclaration = _a$1.exportNamedDeclaration, identifier$1 = _a$1.identifier;
+var _a$1 = recast__default['default'].types.builders, exportDefaultDeclaration = _a$1.exportDefaultDeclaration, exportNamedDeclaration = _a$1.exportNamedDeclaration, identifier$1 = _a$1.identifier;
 var cwd = process.cwd() + '/';
 var NotSupportComponentLifecycle = [
     ComponentLifecycleTypes.componentWillReceiveProps,
@@ -291,11 +291,6 @@ var NotSupportComponentLifecycle = [
     ComponentLifecycleTypes.getDefaultProps,
     ComponentLifecycleTypes.getInitialState
 ];
-var getNewFileName = function (filePath) {
-    var arr = filePath.split('/');
-    var _a = arr[arr.length - 1].split('.'), name = _a[0], suffix = _a.slice(1);
-    return name + '.fc.' + suffix.join('.');
-};
 var dealConstructor = function (constructorBody, acc) {
     constructorBody.forEach(function (constructorItem) {
         // 找到 this.state 
@@ -316,60 +311,70 @@ var dealConstructor = function (constructorBody, acc) {
         }
     });
 };
-var dealComponentBody = function (item, specifierInfo) {
+var dealComponentBody = function (item, transformInfo, filePath) {
     // 不支持的生命周期，暂且不管
     if (item.body.body.some(function (i) { return NotSupportComponentLifecycle.includes(i.key.name); })) {
+        console.log(chalk__default['default'].yellow(filePath.replace(cwd, '') + 'Can\'t be converted! the reason: Unsupported life cycle'));
         return item;
     }
     else {
-        var reactFCBody = item.body.body.reduce(function (acc, i) {
-            if (i.key.name === ComponentLifecycleTypes.constructor) {
-                var constructorBody = i.value.body.body;
-                // 只校验 存在 super(props) 和 this.state = { name: 'xiaoming' } 这种情况
-                if (constructorBody.every(function (constructorItem) { return constructorItem.type === Types.ExpressionStatement; })) {
-                    specifierInfo.useState = true;
-                    dealConstructor(constructorBody, acc);
+        try {
+            var reactFCBody = item.body.body.reduce(function (acc, i) {
+                if (i.key.name === ComponentLifecycleTypes.constructor) {
+                    var constructorBody = i.value.body.body;
+                    // 只校验 存在 super(props) 和 this.state = { name: 'xiaoming' } 这种情况
+                    if (constructorBody.every(function (constructorItem) { return constructorItem.type === Types.ExpressionStatement; })) {
+                        transformInfo.useState = true;
+                        dealConstructor(constructorBody, acc);
+                    }
+                    else {
+                        transformInfo.canConstructorSupport = false;
+                        console.log(chalk__default['default'].yellow(filePath.replace(cwd, '') + 'Can\'t be converted! the reason: constructor content not support'));
+                        return item;
+                    }
+                }
+                else if (i.key.name === ComponentLifecycleTypes.componentDidMount
+                    || i.key.name === ComponentLifecycleTypes.UNSAFE_componentWillMount
+                    || i.key.name === ComponentLifecycleTypes.componentWillMount) {
+                    transformInfo.useEffect = true;
+                    acc.componentDidMount = transformState(i.value.body);
+                }
+                else if (i.key.name === ComponentLifecycleTypes.componentWillUnmount) {
+                    transformInfo.useEffect = true;
+                    acc.componentWillUnmount = transformState(i.value.body);
+                }
+                else if (i.key.name === ComponentLifecycleTypes.render) {
+                    acc.return = transformState(i.value.body);
                 }
                 else {
-                    return item;
+                    acc.methods.push(reactFunctionComponentDeclaration(i.key.name, {
+                        props: i.value.params.map(function (param) { return param.name; }),
+                        content: i.value.body.body
+                    }));
                 }
-            }
-            else if (i.key.name === ComponentLifecycleTypes.componentDidMount
-                || i.key.name === ComponentLifecycleTypes.UNSAFE_componentWillMount
-                || i.key.name === ComponentLifecycleTypes.componentWillMount) {
-                specifierInfo.useEffect = true;
-                acc.componentDidMount = transformState(i.value.body);
-            }
-            else if (i.key.name === ComponentLifecycleTypes.componentWillUnmount) {
-                specifierInfo.useEffect = true;
-                acc.componentWillUnmount = transformState(i.value.body);
-            }
-            else if (i.key.name === ComponentLifecycleTypes.render) {
-                acc.return = transformState(i.value.body);
-            }
-            else {
-                acc.methods.push(reactFunctionComponentDeclaration(i.key.name, {
-                    props: i.value.params.map(function (param) { return param.name; }),
-                    content: i.value.body.body
-                }));
-            }
-            return acc;
-        }, {
-            state: [],
-            methods: [],
-            componentDidMount: [],
-            componentWillUnmount: [],
-            return: null
-        });
-        var rfc = reactFunctionComponentDeclaration(item.id.name, {
-            props: ['props'],
-            content: __spreadArrays(reactFCBody.state, reactFCBody.methods, ((reactFCBody.componentDidMount.length
-                || reactFCBody.componentWillUnmount.length) ? [useEffectExpressionStatement({
-                    content: reactFCBody.componentDidMount,
-                    returnContent: reactFCBody.componentWillUnmount
-                })] : []), JSXReturnExpressionStatement(reactFCBody.return))
-        });
-        return rfc;
+                return acc;
+            }, {
+                state: [],
+                methods: [],
+                componentDidMount: [],
+                componentWillUnmount: [],
+                return: null
+            });
+            var rfc = reactFunctionComponentDeclaration(item.id.name, {
+                props: ['props'],
+                content: __spreadArrays((reactFCBody.state || []), (reactFCBody.methods || []), ((reactFCBody.componentDidMount.length
+                    || reactFCBody.componentWillUnmount.length) ? [useEffectExpressionStatement({
+                        content: reactFCBody.componentDidMount,
+                        returnContent: reactFCBody.componentWillUnmount
+                    })] : []), JSXReturnExpressionStatement(reactFCBody.return || []))
+            });
+            transformInfo.canTransform = true;
+            return rfc;
+        }
+        catch (e) {
+            console.log(chalk__default['default'].red(filePath.replace(cwd, '') + 'Can\'t be converted! the reason: ' + e.description));
+            return item;
+        }
     }
 };
 var isReactComponent = function (item) { return item.type === Types.ClassDeclaration && item.superClass.name === Types.Component; };
@@ -378,23 +383,25 @@ var isExportNamedDeclaration = function (item) { return item.type === Types.Expo
 var reactClassComponentToFunctionComponent = function (filePath) {
     var code = fs__default['default'].readFileSync(filePath, { encoding: 'utf8' }).toString();
     var initializer = recast__default['default'].parse(code);
-    var specifierInfo = {
+    var transformInfo = {
         useState: false,
-        useEffect: false
+        useEffect: false,
+        canTransform: false,
+        canConstructorSupport: true
     };
     // 遍历文件当前页面第一层级结构
     var res = initializer.program.body.reduce(function (accumulate, item) {
         // export default class Demo extends Component
         if (isExportDefaultDeclaration(item)) {
-            accumulate.push(dealComponentBody(item.declaration, specifierInfo), exportDefaultDeclaration$1(identifier$1(item.declaration.id.name)));
+            accumulate.push(dealComponentBody(item.declaration, transformInfo, filePath), exportDefaultDeclaration(identifier$1(item.declaration.id.name)));
         }
         else if (isExportNamedDeclaration(item)) {
             // export class Demo extends Component
-            accumulate.push(exportNamedDeclaration(dealComponentBody(item.declaration, specifierInfo)));
+            accumulate.push(exportNamedDeclaration(dealComponentBody(item.declaration, transformInfo, filePath)));
         }
         else if (isReactComponent(item)) {
             // class Demo extends Component
-            accumulate.push(dealComponentBody(item, specifierInfo));
+            accumulate.push(dealComponentBody(item, transformInfo, filePath));
         }
         else {
             accumulate.push(item);
@@ -403,7 +410,10 @@ var reactClassComponentToFunctionComponent = function (filePath) {
     }, []);
     res.forEach(function (item) {
         if (item.type === Types.ImportDeclaration && item.source.value === 'react') {
-            Object.entries(specifierInfo).forEach(function (_a) {
+            Object.entries(transformInfo).filter(function (_a) {
+                var key = _a[0];
+                return key !== 'canTransform' && key !== 'canConstructorSupport';
+            }).forEach(function (_a) {
                 var key = _a[0], value = _a[1];
                 if (value) {
                     item.specifiers.push(createImportSpecifier(key));
@@ -417,11 +427,13 @@ var reactClassComponentToFunctionComponent = function (filePath) {
         }
     });
     initializer.program.body = res;
-    fs__default['default'].writeFile(path__default['default'].resolve(filePath, '..', getNewFileName(filePath)), recast__default['default'].print(initializer).code, {}, function (err) {
-        if (err)
-            console.log(err);
-        console.log("!!!\u6CE8\u610F\uFF1A\u9ED8\u8BA4\u4F1A\u5728\u76EE\u6807\u6587\u4EF6\u540C\u7EA7\u751F\u6210\u4E00\u4E2A" + getNewFileName(filePath) + "\u6587\u4EF6");
-    });
+    if (transformInfo.canTransform && transformInfo.canConstructorSupport) {
+        fs__default['default'].writeFile(path__default['default'].resolve(filePath), recast__default['default'].print(initializer).code, {}, function (err) {
+            if (err)
+                console.log(err);
+            console.log(chalk__default['default'].green('🎉 🎉 🎉 ' + filePath.replace(cwd, '') + ' Successful transform!!!'));
+        });
+    }
 };
 var cc2fc = function () {
     isChangesNotStagedForCommit().then(function () {
@@ -444,6 +456,7 @@ var cc2fc = function () {
                     reactClassComponentToFunctionComponent(path);
                 });
             }
+            console.log(chalk__default['default'].redBright('\n The format of the file may be damaged. If necessary, please use eslint to process it uniformly \n'));
         });
     });
 };
