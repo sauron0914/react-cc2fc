@@ -3,7 +3,7 @@
 ## Usage
 
 ```bash
-    npx react-cc2fc start [directory | filePath]
+$ npx react-cc2fc start [directory | filePath]
 ```
 
 ## Example
