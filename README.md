@@ -118,3 +118,5 @@ export default DeviceCell
 
     getInitialState
 ```
+
+- The format of the file may be damaged. If necessary, please use eslint to process it uniformly
