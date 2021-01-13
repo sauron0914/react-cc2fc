@@ -47,7 +47,7 @@ export default class DeviceCell extends Component {
 ```
 
 ```bash 
- npx react-cc2fc start demo.js
+$ npx react-cc2fc start demo.js
 ```
 Generate demo.fc.js in the current directory of demo.js
 
