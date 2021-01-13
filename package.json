@@ -11,8 +11,9 @@
     "build": "rollup -c"
   },
   "keywords": [
-    "component",
-    "statistics"
+    "React",
+    "Class Component",
+    "Hooks Function Component"
   ],
   "repository": {
     "type": "git",
