@@ -21,9 +21,6 @@
   "author": "sauron0914(s_sauron@163.com)",
   "license": "ISC",
   "dependencies": {
-    "@babel/generator": "^7.12.11",
-    "@babel/parser": "^7.12.11",
-    "@types/node": "^13.9.1",
     "chalk": "^3.0.0",
     "commander": "^5.0.0",
     "inquirer": "^7.1.0",
