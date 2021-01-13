@@ -349,7 +349,7 @@ var dealComponentBody = function (item, transformInfo, filePath) {
                 else {
                     acc.methods.push(reactFunctionComponentDeclaration(i.key.name, {
                         props: i.value.params.map(function (param) { return param.name; }),
-                        content: i.value.body.body
+                        content: transformState(i.value.body)
                     }));
                 }
                 return acc;
@@ -382,57 +382,62 @@ var isExportDefaultDeclaration = function (item) { return item.type === Types.Ex
 var isExportNamedDeclaration = function (item) { return item.type === Types.ExportNamedDeclaration && isReactComponent(item.declaration); };
 var reactClassComponentToFunctionComponent = function (filePath) {
     var code = fs__default['default'].readFileSync(filePath, { encoding: 'utf8' }).toString();
-    var initializer = recast__default['default'].parse(code);
-    var transformInfo = {
-        useState: false,
-        useEffect: false,
-        canTransform: false,
-        canConstructorSupport: true
-    };
-    // 遍历文件当前页面第一层级结构
-    var res = initializer.program.body.reduce(function (accumulate, item) {
-        // export default class Demo extends Component
-        if (isExportDefaultDeclaration(item)) {
-            accumulate.push(dealComponentBody(item.declaration, transformInfo, filePath), exportDefaultDeclaration(identifier$1(item.declaration.id.name)));
-        }
-        else if (isExportNamedDeclaration(item)) {
-            // export class Demo extends Component
-            accumulate.push(exportNamedDeclaration(dealComponentBody(item.declaration, transformInfo, filePath)));
-        }
-        else if (isReactComponent(item)) {
-            // class Demo extends Component
-            accumulate.push(dealComponentBody(item, transformInfo, filePath));
-        }
-        else {
-            accumulate.push(item);
-        }
-        return accumulate;
-    }, []);
-    res.forEach(function (item) {
-        if (item.type === Types.ImportDeclaration && item.source.value === 'react') {
-            Object.entries(transformInfo).filter(function (_a) {
-                var key = _a[0];
-                return key !== 'canTransform' && key !== 'canConstructorSupport';
-            }).forEach(function (_a) {
-                var key = _a[0], value = _a[1];
-                if (value) {
-                    item.specifiers.push(createImportSpecifier(key));
-                    // remove import React, { Component } from 'react' 中的 Component
-                    var ComponentIndex = item.specifiers.findIndex(function (i) { var _a; return ((_a = i.imported) === null || _a === void 0 ? void 0 : _a.name) === Types.Component; });
-                    if (ComponentIndex !== -1) {
-                        item.specifiers.splice(ComponentIndex, 1);
+    try {
+        var initializer = recast__default['default'].parse(code);
+        var transformInfo_1 = {
+            useState: false,
+            useEffect: false,
+            canTransform: false,
+            canConstructorSupport: true
+        };
+        // 遍历文件当前页面第一层级结构
+        var res = initializer.program.body.reduce(function (accumulate, item) {
+            // export default class Demo extends Component
+            if (isExportDefaultDeclaration(item)) {
+                accumulate.push(dealComponentBody(item.declaration, transformInfo_1, filePath), exportDefaultDeclaration(identifier$1(item.declaration.id.name)));
+            }
+            else if (isExportNamedDeclaration(item)) {
+                // export class Demo extends Component
+                accumulate.push(exportNamedDeclaration(dealComponentBody(item.declaration, transformInfo_1, filePath)));
+            }
+            else if (isReactComponent(item)) {
+                // class Demo extends Component
+                accumulate.push(dealComponentBody(item, transformInfo_1, filePath));
+            }
+            else {
+                accumulate.push(item);
+            }
+            return accumulate;
+        }, []);
+        res.forEach(function (item) {
+            if (item.type === Types.ImportDeclaration && item.source.value === 'react') {
+                Object.entries(transformInfo_1).filter(function (_a) {
+                    var key = _a[0];
+                    return key !== 'canTransform' && key !== 'canConstructorSupport';
+                }).forEach(function (_a) {
+                    var key = _a[0], value = _a[1];
+                    if (value) {
+                        item.specifiers.push(createImportSpecifier(key));
+                        // remove import React, { Component } from 'react' 中的 Component
+                        var ComponentIndex = item.specifiers.findIndex(function (i) { var _a; return ((_a = i.imported) === null || _a === void 0 ? void 0 : _a.name) === Types.Component; });
+                        if (ComponentIndex !== -1) {
+                            item.specifiers.splice(ComponentIndex, 1);
+                        }
                     }
-                }
+                });
+            }
+        });
+        initializer.program.body = res;
+        if (transformInfo_1.canTransform && transformInfo_1.canConstructorSupport) {
+            fs__default['default'].writeFile(path__default['default'].resolve(filePath), recast__default['default'].print(initializer).code, {}, function (err) {
+                if (err)
+                    console.log(err);
+                console.log(chalk__default['default'].green('🎉 🎉 🎉 ' + filePath.replace(cwd, '') + ' Successful transform!!!'));
             });
         }
-    });
-    initializer.program.body = res;
-    if (transformInfo.canTransform && transformInfo.canConstructorSupport) {
-        fs__default['default'].writeFile(path__default['default'].resolve(filePath), recast__default['default'].print(initializer).code, {}, function (err) {
-            if (err)
-                console.log(err);
-            console.log(chalk__default['default'].green('🎉 🎉 🎉 ' + filePath.replace(cwd, '') + ' Successful transform!!!'));
-        });
+    }
+    catch (e) {
+        console.log(chalk__default['default'].red(filePath.replace(cwd, '') + 'Can\'t be converted! the reason: ' + e.description));
     }
 };
 var cc2fc = function () {

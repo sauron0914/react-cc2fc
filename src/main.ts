@@ -21,7 +21,6 @@ const {
   identifier,
 } = recast.types.builders
 import { ComponentLifecycleTypes, Types } from './types'
-import { transform } from 'typescript'
 
 const cwd = process.cwd() + '/'
 
@@ -93,7 +92,7 @@ const dealComponentBody = (item, transformInfo, filePath) => {
           } else {
             acc.methods.push(reactFunctionComponentDeclaration(i.key.name, {
               props: i.value.params.map(param=> param.name),
-              content: i.value.body.body
+              content: transformState(i.value.body)
             }))
           }
           return acc
@@ -132,54 +131,57 @@ const isExportNamedDeclaration = item => item.type === Types.ExportNamedDeclarat
 
 const reactClassComponentToFunctionComponent  = filePath => {
   const code =  fs.readFileSync(filePath, {encoding:'utf8'}).toString()
-  const initializer = recast.parse(code)
-  const transformInfo = {
-    useState: false,
-    useEffect: false,
-    canTransform: false,
-    canConstructorSupport: true
-  }
-  // 遍历文件当前页面第一层级结构
-  const res = initializer.program.body.reduce((accumulate, item) => {
-    // export default class Demo extends Component
-    if(isExportDefaultDeclaration(item)) {
-      accumulate.push(dealComponentBody(item.declaration, transformInfo, filePath), exportDefaultDeclaration(identifier(item.declaration.id.name)))
-    } else if(isExportNamedDeclaration(item)) {
-      // export class Demo extends Component
-      accumulate.push(exportNamedDeclaration(dealComponentBody(item.declaration, transformInfo, filePath)))
-    } else if(isReactComponent(item)) {
-      // class Demo extends Component
-      accumulate.push(dealComponentBody(item, transformInfo, filePath))
-    } else {
-      accumulate.push(item)
+  try {
+    const initializer = recast.parse(code)
+    const transformInfo = {
+      useState: false,
+      useEffect: false,
+      canTransform: false,
+      canConstructorSupport: true
     }
-    return accumulate
-  }, [])
-
-  res.forEach(item => {
-    if(item.type === Types.ImportDeclaration && item.source.value === 'react') {
-      Object.entries(transformInfo).filter(([key])=> key !== 'canTransform' && key !== 'canConstructorSupport').forEach(([key, value])=> {
-        if(value) {
-          item.specifiers.push(createImportSpecifier(key))
-          // remove import React, { Component } from 'react' 中的 Component
-          const ComponentIndex = item.specifiers.findIndex(i=> i.imported?.name === Types.Component)
-          if(ComponentIndex !== -1) {
-            item.specifiers.splice(ComponentIndex, 1)
+    // 遍历文件当前页面第一层级结构
+    const res = initializer.program.body.reduce((accumulate, item) => {
+      // export default class Demo extends Component
+      if(isExportDefaultDeclaration(item)) {
+        accumulate.push(dealComponentBody(item.declaration, transformInfo, filePath), exportDefaultDeclaration(identifier(item.declaration.id.name)))
+      } else if(isExportNamedDeclaration(item)) {
+        // export class Demo extends Component
+        accumulate.push(exportNamedDeclaration(dealComponentBody(item.declaration, transformInfo, filePath)))
+      } else if(isReactComponent(item)) {
+        // class Demo extends Component
+        accumulate.push(dealComponentBody(item, transformInfo, filePath))
+      } else {
+        accumulate.push(item)
+      }
+      return accumulate
+    }, [])
+  
+    res.forEach(item => {
+      if(item.type === Types.ImportDeclaration && item.source.value === 'react') {
+        Object.entries(transformInfo).filter(([key])=> key !== 'canTransform' && key !== 'canConstructorSupport').forEach(([key, value])=> {
+          if(value) {
+            item.specifiers.push(createImportSpecifier(key))
+            // remove import React, { Component } from 'react' 中的 Component
+            const ComponentIndex = item.specifiers.findIndex(i=> i.imported?.name === Types.Component)
+            if(ComponentIndex !== -1) {
+              item.specifiers.splice(ComponentIndex, 1)
+            }
           }
-        }
+        })
+      }
+    })
+  
+    initializer.program.body = res
+  
+    if(transformInfo.canTransform && transformInfo.canConstructorSupport) {
+      fs.writeFile(path.resolve(filePath), recast.print(initializer).code, {} ,function(err){
+        if(err) console.log(err)
+        console.log(chalk.green('🎉 🎉 🎉 ' + filePath.replace(cwd, '') + ' Successful transform!!!'))
       })
     }
-  })
-
-  initializer.program.body = res
-
-  if(transformInfo.canTransform && transformInfo.canConstructorSupport) {
-    fs.writeFile(path.resolve(filePath), recast.print(initializer).code, {} ,function(err){
-      if(err) console.log(err)
-      console.log(chalk.green('🎉 🎉 🎉 ' + filePath.replace(cwd, '') + ' Successful transform!!!'))
-    })
-  }
-  
+  } catch (e) {
+    console.log(chalk.red(filePath.replace(cwd, '') + 'Can\'t be converted! the reason: ' + e.description))
+  } 
 }
 
 const cc2fc = () => {
