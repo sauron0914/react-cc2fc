@@ -49,8 +49,9 @@ export default class DeviceCell extends Component {
 ```bash 
 $ npx react-cc2fc start demo.js
 ```
-Generate demo.fc.js in the current directory of demo.js
+Generate `demo.fc.js` in the current directory of `demo.js`
 
+demo.fc.js
 ```js
 import React, { useEffect } from 'react'
 import Style from './deviceCell.less'
