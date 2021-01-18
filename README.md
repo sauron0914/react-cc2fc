@@ -50,7 +50,6 @@ export default class DeviceCell extends Component {
 $ npx react-cc2fc start demo.js
 ```
 
-demo.js
 ```js
 import React, { useEffect } from 'react'
 import Style from './deviceCell.less'
