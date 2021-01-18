@@ -7,7 +7,11 @@ export enum Types {
   ExpressionStatement = 'ExpressionStatement',
   ImportDeclaration = 'ImportDeclaration',
   ExportDefaultDeclaration = 'ExportDefaultDeclaration',
-  ExportNamedDeclaration = 'ExportNamedDeclaration'
+  ExportNamedDeclaration = 'ExportNamedDeclaration',
+  Super = 'Super',
+  ClassMethod = 'ClassMethod',
+  CallExpression = 'CallExpression',
+  MemberExpression = 'MemberExpression'
 }
 
 export enum ComponentLifecycleTypes {

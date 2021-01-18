@@ -1,6 +1,6 @@
 {
   "name": "react-cc2fc",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "React Class Component To Hooks Function Component",
   "main": "rollup.config.js",
   "bin": {
@@ -26,11 +26,13 @@
     "commander": "^5.0.0",
     "inquirer": "^7.1.0",
     "recast": "^0.20.4",
-    "typescript": "^3.8.3"
+    "typescript": "^3.8.3",
+    "@babel/parser": "7.11.5"
   },
   "devDependencies": {
     "rollup": "^2.0.6",
     "rollup-plugin-commonjs": "^10.1.0",
-    "rollup-plugin-typescript": "^1.0.1"
+    "rollup-plugin-typescript": "^1.0.1",
+    "@types/node": "^13.9.1"
   }
 }

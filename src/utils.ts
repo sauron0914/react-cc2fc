@@ -16,6 +16,8 @@ const {
     variableDeclarator,
     arrayPattern,
     importSpecifier,
+    spreadElement,
+    objectExpression,
 } = recast.types.builders
 
 const includeFile = ['.js']
@@ -46,6 +48,11 @@ export const traverseFile= (src ,callback) => {
  *  getArgvs() 返回 [file-path1, files-path2]
 */
 export const getArgvs = () => [...process.argv].splice(3)
+
+export const recastBabel = {
+    parse: code => recast.parse(code, { parser: require('recast/parsers/babel') }),
+    print: ast => recast.print(ast, { parser: require('recast/parsers/babel') }).code
+}
 
 /**
  * 创建一个类似 useEffect(()=>{
@@ -78,18 +85,21 @@ export const useEffectExpressionStatement = ({
     )
 }
 
+export const createUseStateFunctionArguments = (expression, state) => {
+    return arrowFunctionExpression([], blockStatement([
+        ...expression,
+        returnStatement(state)
+    ]))
+}
+
 /**
  * 创建一个类似 const [name, setName] = useState() 表达式
 */
-export const useStateExpressionStatement = ({
-    stateName, 
-    setStateName,
-    defaultValue
-}) => {
+export const useStateExpressionStatement = (defaultValue) => {
     const useState = identifier('useState')
     return variableDeclaration('const', [
-        variableDeclarator(arrayPattern([identifier(stateName), identifier(setStateName)]), callExpression(useState, [
-            identifier(defaultValue)
+        variableDeclarator(arrayPattern([identifier('state'), identifier('setState')]), callExpression(useState, [
+            defaultValue
         ]))
     ])
 }
@@ -102,45 +112,35 @@ export const reactFunctionComponentDeclaration = (FCName, {
     content = []
 }) => {
     return variableDeclaration('const', [
-        variableDeclarator(identifier(FCName), arrowFunctionExpression([...props.map(i=> identifier(i))], blockStatement([...content])))
+        variableDeclarator(identifier(FCName), arrowFunctionExpression([...props], blockStatement([...content])))
     ])
-}
-
-/**
- * name => setName
-*/
-export const setStateAction = (str: string)=> {
-    return 'set' + str[0].toLocaleUpperCase() + str.substr(1)
 }
 
 /**
  * get originalCode
 */
-export const originalCode = parseAst => recast.print(parseAst).code
+export const originalCode = parseAst => recastBabel.print(parseAst)
 
 /**
  * 生成 setState 表达式
 */
-export const transformSetState = (stateStrParse) => {
-    return stateStrParse.map(item=>{
-        return callExpression(
-            identifier(setStateAction(item.key.name)),
-            [item.value]
-        )
-    }) 
+const transformSetState = stateStrParse => {
+    return callExpression(identifier('setState'), [
+        objectExpression([spreadElement(identifier('state')), ...stateStrParse]),
+    ])
 }
 
 /**
  * 处理this this.state 和 this.setState
 */
-export const transformState = (body) => {
+export const transformState = body => {
     let str = originalCode(body)
     const res = transformSetStateToHooks(str)
     res.forEach(element => {
-        str = str.replace(element.originalCode, element.code.join('\n'))
+        str = str.replace(element.originalCode, element.code)
     })
-    str = str.replace(/(this\.state\.)|(this\.)/g, '')
-    return recast.parse(str).program.body[0].body
+    str = str.replace(/this\./g, '')
+    return recastBabel.parse(str).program.body[0].body
 }
 
 /**
@@ -151,16 +151,14 @@ export const transformState = (body) => {
  * }) => setName('xiaoming') \n setAge(21)
  * 
 */
-export const transformSetStateToHooks = (str) => {
+const transformSetStateToHooks = str => {
     const thisSetStateMatch = str.split('this.setState(').slice(1)
-
     return thisSetStateMatch.reduce((acc, item) => {
         const thisSetStateStr = 'const thisSetStateStr =' + findObjectStr(item)
-        const thisSetStateStrParse = recast.parse(thisSetStateStr).program.body[0].declarations[0].init.properties
-
+        const thisSetStateStrParse = recastBabel.parse(thisSetStateStr).program.body[0].declarations[0].init.properties
         acc.push({
             originalCode: 'this.setState(' + findObjectStr(item) + ')',
-            code: transformSetState(thisSetStateStrParse).map(i=> recast.print(i).code)
+            code: recastBabel.print(transformSetState(thisSetStateStrParse))
         })
         return acc
     }, [])
@@ -172,7 +170,6 @@ export const transformSetStateToHooks = (str) => {
  * 否则生成一个立即执行函数，把render里面return前的操作置前
 */
 export const JSXReturnExpressionStatement = (val) => {
-
     if(val.length === 1) return [val[0]]
     // return [returnStatement(callExpression(arrowFunctionExpression([], blockStatement([...val])), []))]
     return [...val]
@@ -189,17 +186,22 @@ export const createImportSpecifier = (name) => {
  * 匹配出一个字符串对象
 */
 const findObjectStr = (str: string) => {
-    const res = { str: '', count: 0 }
-    str.split('').some(item=> {
-        if(res.str.includes('{') && !res.count) return true
-        res.str += item
-        if(item === '{') {
-            res.count++
-        } else if(item === '}') {
-            res.count--
-        }
-    })
-    return res.str
+    if(str[0] === '{') {
+        const res = { str: '', count: 0 }
+        str.split('').some(item=> {
+            if(res.str.includes('{') && !res.count) return true
+            res.str += item
+            if(item === '{') {
+                res.count++
+            } else if(item === '}') {
+                res.count--
+            }
+        })
+        return res.str
+    } else {
+        return str.split(')')[0]
+    }
+    
 }
 
 /**

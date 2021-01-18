@@ -39,7 +39,7 @@ function __spreadArrays() {
     return r;
 }
 
-var _a = recast__default['default'].types.builders, expressionStatement = _a.expressionStatement, callExpression = _a.callExpression, identifier = _a.identifier, arrowFunctionExpression = _a.arrowFunctionExpression, blockStatement = _a.blockStatement, returnStatement = _a.returnStatement, arrayExpression = _a.arrayExpression, variableDeclaration = _a.variableDeclaration, variableDeclarator = _a.variableDeclarator, arrayPattern = _a.arrayPattern, importSpecifier = _a.importSpecifier;
+var _a = recast__default['default'].types.builders, expressionStatement = _a.expressionStatement, callExpression = _a.callExpression, identifier = _a.identifier, arrowFunctionExpression = _a.arrowFunctionExpression, blockStatement = _a.blockStatement, returnStatement = _a.returnStatement, arrayExpression = _a.arrayExpression, variableDeclaration = _a.variableDeclaration, variableDeclarator = _a.variableDeclarator, arrayPattern = _a.arrayPattern, importSpecifier = _a.importSpecifier, spreadElement = _a.spreadElement, objectExpression = _a.objectExpression;
 var includeFile = ['.js'];
 var matchSuffix = function (str) {
     var res = str.match(/\.\w+/g);
@@ -66,6 +66,10 @@ var traverseFile = function (src, callback) {
  *  getArgvs() 返回 [file-path1, files-path2]
 */
 var getArgvs = function () { return __spreadArrays(process.argv).splice(3); };
+var recastBabel = {
+    parse: function (code) { return recast__default['default'].parse(code, { parser: require('recast/parsers/babel') }); },
+    print: function (ast) { return recast__default['default'].print(ast, { parser: require('recast/parsers/babel') }).code; }
+};
 /**
  * 创建一个类似 useEffect(()=>{
  *   ...something
@@ -82,15 +86,19 @@ var useEffectExpressionStatement = function (_a) {
         arrayExpression([])
     ]));
 };
+var createUseStateFunctionArguments = function (expression, state) {
+    return arrowFunctionExpression([], blockStatement(__spreadArrays(expression, [
+        returnStatement(state)
+    ])));
+};
 /**
  * 创建一个类似 const [name, setName] = useState() 表达式
 */
-var useStateExpressionStatement = function (_a) {
-    var stateName = _a.stateName, setStateName = _a.setStateName, defaultValue = _a.defaultValue;
+var useStateExpressionStatement = function (defaultValue) {
     var useState = identifier('useState');
     return variableDeclaration('const', [
-        variableDeclarator(arrayPattern([identifier(stateName), identifier(setStateName)]), callExpression(useState, [
-            identifier(defaultValue)
+        variableDeclarator(arrayPattern([identifier('state'), identifier('setState')]), callExpression(useState, [
+            defaultValue
         ]))
     ]);
 };
@@ -100,26 +108,20 @@ var useStateExpressionStatement = function (_a) {
 var reactFunctionComponentDeclaration = function (FCName, _a) {
     var _b = _a.props, props = _b === void 0 ? [] : _b, _c = _a.content, content = _c === void 0 ? [] : _c;
     return variableDeclaration('const', [
-        variableDeclarator(identifier(FCName), arrowFunctionExpression(__spreadArrays(props.map(function (i) { return identifier(i); })), blockStatement(__spreadArrays(content))))
+        variableDeclarator(identifier(FCName), arrowFunctionExpression(__spreadArrays(props), blockStatement(__spreadArrays(content))))
     ]);
-};
-/**
- * name => setName
-*/
-var setStateAction = function (str) {
-    return 'set' + str[0].toLocaleUpperCase() + str.substr(1);
 };
 /**
  * get originalCode
 */
-var originalCode = function (parseAst) { return recast__default['default'].print(parseAst).code; };
+var originalCode = function (parseAst) { return recastBabel.print(parseAst); };
 /**
  * 生成 setState 表达式
 */
 var transformSetState = function (stateStrParse) {
-    return stateStrParse.map(function (item) {
-        return callExpression(identifier(setStateAction(item.key.name)), [item.value]);
-    });
+    return callExpression(identifier('setState'), [
+        objectExpression(__spreadArrays([spreadElement(identifier('state'))], stateStrParse)),
+    ]);
 };
 /**
  * 处理this this.state 和 this.setState
@@ -128,10 +130,10 @@ var transformState = function (body) {
     var str = originalCode(body);
     var res = transformSetStateToHooks(str);
     res.forEach(function (element) {
-        str = str.replace(element.originalCode, element.code.join('\n'));
+        str = str.replace(element.originalCode, element.code);
     });
-    str = str.replace(/(this\.state\.)|(this\.)/g, '');
-    return recast__default['default'].parse(str).program.body[0].body;
+    str = str.replace(/this\./g, '');
+    return recastBabel.parse(str).program.body[0].body;
 };
 /**
  * this.setState => setState
@@ -145,10 +147,10 @@ var transformSetStateToHooks = function (str) {
     var thisSetStateMatch = str.split('this.setState(').slice(1);
     return thisSetStateMatch.reduce(function (acc, item) {
         var thisSetStateStr = 'const thisSetStateStr =' + findObjectStr(item);
-        var thisSetStateStrParse = recast__default['default'].parse(thisSetStateStr).program.body[0].declarations[0].init.properties;
+        var thisSetStateStrParse = recastBabel.parse(thisSetStateStr).program.body[0].declarations[0].init.properties;
         acc.push({
             originalCode: 'this.setState(' + findObjectStr(item) + ')',
-            code: transformSetState(thisSetStateStrParse).map(function (i) { return recast__default['default'].print(i).code; })
+            code: recastBabel.print(transformSetState(thisSetStateStrParse))
         });
         return acc;
     }, []);
@@ -174,19 +176,24 @@ var createImportSpecifier = function (name) {
  * 匹配出一个字符串对象
 */
 var findObjectStr = function (str) {
-    var res = { str: '', count: 0 };
-    str.split('').some(function (item) {
-        if (res.str.includes('{') && !res.count)
-            return true;
-        res.str += item;
-        if (item === '{') {
-            res.count++;
-        }
-        else if (item === '}') {
-            res.count--;
-        }
-    });
-    return res.str;
+    if (str[0] === '{') {
+        var res_1 = { str: '', count: 0 };
+        str.split('').some(function (item) {
+            if (res_1.str.includes('{') && !res_1.count)
+                return true;
+            res_1.str += item;
+            if (item === '{') {
+                res_1.count++;
+            }
+            else if (item === '}') {
+                res_1.count--;
+            }
+        });
+        return res_1.str;
+    }
+    else {
+        return str.split(')')[0];
+    }
 };
 /**
  * prompt 提示 是否继续操作
@@ -247,6 +254,10 @@ var Types;
     Types["ImportDeclaration"] = "ImportDeclaration";
     Types["ExportDefaultDeclaration"] = "ExportDefaultDeclaration";
     Types["ExportNamedDeclaration"] = "ExportNamedDeclaration";
+    Types["Super"] = "Super";
+    Types["ClassMethod"] = "ClassMethod";
+    Types["CallExpression"] = "CallExpression";
+    Types["MemberExpression"] = "MemberExpression";
 })(Types || (Types = {}));
 var ComponentLifecycleTypes;
 (function (ComponentLifecycleTypes) {
@@ -292,64 +303,77 @@ var NotSupportComponentLifecycle = [
     ComponentLifecycleTypes.getInitialState
 ];
 var dealConstructor = function (constructorBody, acc) {
-    constructorBody.forEach(function (constructorItem) {
-        // 找到 this.state 
-        var expression = constructorItem.expression;
-        if (expression
-            && expression.type === Types.AssignmentExpression
-            && expression.operator === '='
-            && expression.left.object.type === Types.ThisExpression
-            && expression.left.property.name === 'state') {
-            var stateRights = expression.right.properties;
-            stateRights.forEach(function (stateRight) {
-                acc.state.push(useStateExpressionStatement({
-                    stateName: stateRight.key.name,
-                    setStateName: setStateAction(stateRight.key.name),
-                    defaultValue: originalCode(stateRight.value)
-                }));
-            });
-        }
+    var _a;
+    var tempConstructorBody = __spreadArrays(constructorBody);
+    var superIndex = tempConstructorBody.findIndex(function (constructorItem) {
+        var _a, _b;
+        return ((_b = (_a = constructorItem === null || constructorItem === void 0 ? void 0 : constructorItem.expression) === null || _a === void 0 ? void 0 : _a.callee) === null || _b === void 0 ? void 0 : _b.type) === Types.Super;
     });
+    tempConstructorBody.splice(superIndex, 1);
+    var states = [];
+    var ThisStateBodyIndex = tempConstructorBody.findIndex(function (constructorItem) {
+        var _a, _b, _c, _d, _e, _f;
+        return ((_c = (_b = (_a = constructorItem === null || constructorItem === void 0 ? void 0 : constructorItem.expression) === null || _a === void 0 ? void 0 : _a.left) === null || _b === void 0 ? void 0 : _b.object) === null || _c === void 0 ? void 0 : _c.type) === Types.ThisExpression && ((_f = (_e = (_d = constructorItem === null || constructorItem === void 0 ? void 0 : constructorItem.expression) === null || _d === void 0 ? void 0 : _d.left) === null || _e === void 0 ? void 0 : _e.property) === null || _f === void 0 ? void 0 : _f.name) === 'state';
+    });
+    var ThisStateBody = tempConstructorBody[ThisStateBodyIndex];
+    tempConstructorBody.splice(ThisStateBodyIndex, 1);
+    if (tempConstructorBody.length) {
+        states.push(useStateExpressionStatement(createUseStateFunctionArguments(tempConstructorBody, ThisStateBody.expression.right)));
+    }
+    else {
+        states.push(useStateExpressionStatement(ThisStateBody.expression.right));
+    }
+    (_a = acc.state).push.apply(_a, states);
 };
 var dealComponentBody = function (item, transformInfo, filePath) {
-    // 不支持的生命周期，暂且不管
-    if (item.body.body.some(function (i) { return NotSupportComponentLifecycle.includes(i.key.name); })) {
-        console.log(chalk__default['default'].yellow(filePath.replace(cwd, '') + 'Can\'t be converted! the reason: Unsupported life cycle'));
+    // 不支持除 ClassMethod 以外的属性存在
+    if (item.body.body.some(function (i) { return i.type !== Types.ClassMethod; })) {
+        console.log(chalk__default['default'].yellow('Warning: ' + filePath.replace(cwd, '') + ' Can\'t be converted! the reason: Class has attributes other than ClassMethod'));
+        return item;
+    }
+    else if (item.body.body.some(function (i) { return NotSupportComponentLifecycle.includes(i.key.name); })) {
+        // 不支持的生命周期，暂且不管
+        console.log(chalk__default['default'].yellow('Warning: ' + filePath.replace(cwd, '') + ' Can\'t be converted! the reason: Unsupported life cycle'));
         return item;
     }
     else {
         try {
-            var reactFCBody = item.body.body.reduce(function (acc, i) {
+            var reactFCBody = item.body.body.reduce(function (acc, i, index) {
                 if (i.key.name === ComponentLifecycleTypes.constructor) {
-                    var constructorBody = i.value.body.body;
-                    // 只校验 存在 super(props) 和 this.state = { name: 'xiaoming' } 这种情况
-                    if (constructorBody.every(function (constructorItem) { return constructorItem.type === Types.ExpressionStatement; })) {
-                        transformInfo.useState = true;
-                        dealConstructor(constructorBody, acc);
+                    var constructorBody = i.body.body;
+                    // 不校验 同时存在 this.state = {} 和 this.otherProtype = '123' 的情况
+                    if (constructorBody.some(function (constructorItem) {
+                        var _a, _b, _c;
+                        var expression = constructorItem.expression;
+                        return expression && ((expression.type === Types.AssignmentExpression && ((_b = (_a = expression === null || expression === void 0 ? void 0 : expression.left) === null || _a === void 0 ? void 0 : _a.property) === null || _b === void 0 ? void 0 : _b.name) !== 'state') || (expression.type === Types.CallExpression && ((_c = expression === null || expression === void 0 ? void 0 : expression.callee) === null || _c === void 0 ? void 0 : _c.type) === Types.MemberExpression));
+                    })) {
+                        transformInfo.canConstructorSupport = false;
+                        console.log(chalk__default['default'].yellow('Warning: ' + filePath.replace(cwd, '') + ' Can\'t be converted! the reason: constructor content not support'));
+                        return item;
                     }
                     else {
-                        transformInfo.canConstructorSupport = false;
-                        console.log(chalk__default['default'].yellow(filePath.replace(cwd, '') + 'Can\'t be converted! the reason: constructor content not support'));
-                        return item;
+                        transformInfo.useState = true;
+                        dealConstructor(constructorBody, acc);
                     }
                 }
                 else if (i.key.name === ComponentLifecycleTypes.componentDidMount
                     || i.key.name === ComponentLifecycleTypes.UNSAFE_componentWillMount
                     || i.key.name === ComponentLifecycleTypes.componentWillMount) {
                     transformInfo.useEffect = true;
-                    acc.componentDidMount = transformState(i.value.body);
+                    acc.componentDidMount = transformState(i.body);
                 }
                 else if (i.key.name === ComponentLifecycleTypes.componentWillUnmount) {
                     transformInfo.useEffect = true;
-                    acc.componentWillUnmount = transformState(i.value.body);
+                    acc.componentWillUnmount = transformState(i.body);
                 }
                 else if (i.key.name === ComponentLifecycleTypes.render) {
-                    acc.return = transformState(i.value.body);
+                    acc.return = transformState(i.body);
                 }
                 else {
-                    acc.methods.push(reactFunctionComponentDeclaration(i.key.name, {
-                        props: i.value.params.map(function (param) { return param.name; }),
-                        content: transformState(i.value.body)
+                    ;
+                    (acc.methods || []).push(reactFunctionComponentDeclaration(i.key.name, {
+                        props: i.params,
+                        content: transformState(i.body)
                     }));
                 }
                 return acc;
@@ -361,7 +385,7 @@ var dealComponentBody = function (item, transformInfo, filePath) {
                 return: null
             });
             var rfc = reactFunctionComponentDeclaration(item.id.name, {
-                props: ['props'],
+                props: [identifier$1('props')],
                 content: __spreadArrays((reactFCBody.state || []), (reactFCBody.methods || []), ((reactFCBody.componentDidMount.length
                     || reactFCBody.componentWillUnmount.length) ? [useEffectExpressionStatement({
                         content: reactFCBody.componentDidMount,
@@ -372,18 +396,18 @@ var dealComponentBody = function (item, transformInfo, filePath) {
             return rfc;
         }
         catch (e) {
-            console.log(chalk__default['default'].red(filePath.replace(cwd, '') + 'Can\'t be converted! the reason: ' + e.description));
+            console.log(chalk__default['default'].red('Error: ' + filePath.replace(cwd, '') + ' Can\'t be converted! the reason: ' + e.message));
             return item;
         }
     }
 };
-var isReactComponent = function (item) { return item.type === Types.ClassDeclaration && item.superClass.name === Types.Component; };
+var isReactComponent = function (item) { var _a; return (item === null || item === void 0 ? void 0 : item.type) === Types.ClassDeclaration && ((_a = item === null || item === void 0 ? void 0 : item.superClass) === null || _a === void 0 ? void 0 : _a.name) === Types.Component; };
 var isExportDefaultDeclaration = function (item) { return item.type === Types.ExportDefaultDeclaration && isReactComponent(item.declaration); };
 var isExportNamedDeclaration = function (item) { return item.type === Types.ExportNamedDeclaration && isReactComponent(item.declaration); };
 var reactClassComponentToFunctionComponent = function (filePath) {
     var code = fs__default['default'].readFileSync(filePath, { encoding: 'utf8' }).toString();
     try {
-        var initializer = recast__default['default'].parse(code);
+        var initializer = recastBabel.parse(code);
         var transformInfo_1 = {
             useState: false,
             useEffect: false,
@@ -418,26 +442,34 @@ var reactClassComponentToFunctionComponent = function (filePath) {
                     var key = _a[0], value = _a[1];
                     if (value) {
                         item.specifiers.push(createImportSpecifier(key));
-                        // remove import React, { Component } from 'react' 中的 Component
-                        var ComponentIndex = item.specifiers.findIndex(function (i) { var _a; return ((_a = i.imported) === null || _a === void 0 ? void 0 : _a.name) === Types.Component; });
-                        if (ComponentIndex !== -1) {
-                            item.specifiers.splice(ComponentIndex, 1);
-                        }
                     }
                 });
+                if (Object.entries(transformInfo_1).some(function (_a) {
+                    var key = _a[0], value = _a[1];
+                    return key === 'canTransform' && value;
+                })) {
+                    // remove import React, { Component } from 'react' 中的 Component
+                    var ComponentIndex = item.specifiers.findIndex(function (i) { var _a; return ((_a = i.imported) === null || _a === void 0 ? void 0 : _a.name) === Types.Component; });
+                    if (ComponentIndex !== -1) {
+                        item.specifiers.splice(ComponentIndex, 1);
+                    }
+                }
             }
         });
         initializer.program.body = res;
         if (transformInfo_1.canTransform && transformInfo_1.canConstructorSupport) {
-            fs__default['default'].writeFile(path__default['default'].resolve(filePath), recast__default['default'].print(initializer).code, {}, function (err) {
-                if (err)
-                    console.log(err);
-                console.log(chalk__default['default'].green('🎉 🎉 🎉 ' + filePath.replace(cwd, '') + ' Successful transform!!!'));
-            });
+            try {
+                fs__default['default'].writeFileSync(path__default['default'].resolve(filePath), recastBabel.print(initializer), {});
+                // console.log(recastBabel.print(initializer))
+                console.log(chalk__default['default'].green('Success: 🎉 🎉 🎉 ' + filePath.replace(cwd, '') + ' Successful transform!!!'));
+            }
+            catch (err) {
+                console.error(err);
+            }
         }
     }
     catch (e) {
-        console.log(chalk__default['default'].red(filePath.replace(cwd, '') + 'Can\'t be converted! the reason: ' + e.description));
+        console.log(chalk__default['default'].red('Error: pasrse Error!!! ' + filePath.replace(cwd, '') + ' Can\'t be converted! the reason: ' + e.description));
     }
 };
 var cc2fc = function () {
@@ -449,7 +481,7 @@ var cc2fc = function () {
             return item;
         });
         if (argvs.length !== 1) {
-            console.log(chalk__default['default'].red('only supports commands react-cc2dc start filePath'));
+            console.log(chalk__default['default'].red('Error: only supports commands react-cc2dc start filePath'));
             return;
         }
         fs__default['default'].stat(cwd + argvs[0], function (err, data) {
@@ -461,7 +493,7 @@ var cc2fc = function () {
                     reactClassComponentToFunctionComponent(path);
                 });
             }
-            console.log(chalk__default['default'].redBright('\n The format of the file may be damaged. If necessary, please use eslint to process it uniformly \n'));
+            console.log(chalk__default['default'].yellowBright('\nInfo: The format of the file may be damaged. If necessary, please use eslint to process it uniformly \n'));
         });
     });
 };
