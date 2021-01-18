@@ -126,7 +126,9 @@ export const originalCode = parseAst => recastBabel.print(parseAst)
 */
 const transformSetState = stateStrParse => {
     return callExpression(identifier('setState'), [
-        objectExpression([spreadElement(identifier('state')), ...stateStrParse]),
+        objectExpression([spreadElement(identifier('state')), ...(
+            stateStrParse.length ? stateStrParse : [spreadElement(identifier(stateStrParse.name))]
+        )]),
     ])
 }
 
@@ -155,7 +157,8 @@ const transformSetStateToHooks = str => {
     const thisSetStateMatch = str.split('this.setState(').slice(1)
     return thisSetStateMatch.reduce((acc, item) => {
         const thisSetStateStr = 'const thisSetStateStr =' + findObjectStr(item)
-        const thisSetStateStrParse = recastBabel.parse(thisSetStateStr).program.body[0].declarations[0].init.properties
+        var init = recastBabel.parse(thisSetStateStr).program.body[0].declarations[0].init;
+        var thisSetStateStrParse = init.properties ? init.properties : init;
         acc.push({
             originalCode: 'this.setState(' + findObjectStr(item) + ')',
             code: recastBabel.print(transformSetState(thisSetStateStrParse))

@@ -120,7 +120,7 @@ var originalCode = function (parseAst) { return recastBabel.print(parseAst); };
 */
 var transformSetState = function (stateStrParse) {
     return callExpression(identifier('setState'), [
-        objectExpression(__spreadArrays([spreadElement(identifier('state'))], stateStrParse)),
+        objectExpression(__spreadArrays([spreadElement(identifier('state'))], (stateStrParse.length ? stateStrParse : [spreadElement(identifier(stateStrParse.name))]))),
     ]);
 };
 /**
@@ -147,7 +147,8 @@ var transformSetStateToHooks = function (str) {
     var thisSetStateMatch = str.split('this.setState(').slice(1);
     return thisSetStateMatch.reduce(function (acc, item) {
         var thisSetStateStr = 'const thisSetStateStr =' + findObjectStr(item);
-        var thisSetStateStrParse = recastBabel.parse(thisSetStateStr).program.body[0].declarations[0].init.properties;
+        var init = recastBabel.parse(thisSetStateStr).program.body[0].declarations[0].init;
+        var thisSetStateStrParse = init.properties ? init.properties : init;
         acc.push({
             originalCode: 'this.setState(' + findObjectStr(item) + ')',
             code: recastBabel.print(transformSetState(thisSetStateStrParse))
